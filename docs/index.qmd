@@ -1,0 +1,219 @@
+---
+title: "Linear Regression: Model Specification, Comparison, and Interpretation"
+author: "Alana Graham"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    code-tools: true
+    embed-resources: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+For Lab 3, I have applied linear regression to investigate the factors associated with employees' ratings of their workplace. Specifically, I am examining multiple competing models with departmental handling of employee complaints, opportunity to learn, and pay increases as predictors of overall ratings.
+
+## Descriptive Statistics
+Here is a formatted table reporting the mean, standard deviation, minimum, and maximum for each analysis variable.
+```{r}
+## Setup
+library(carData)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(broom)
+library(performance)
+library(gt)
+
+attitude.df <- data("attitude")
+
+workplace.rating.df <- attitude |> 
+  select(rating, complaints, learning, raises)
+
+#Exploring the data
+descriptives <- workplace.rating.df |>
+  summarise(across(
+      c(rating, complaints, learning, raises),
+      list(mean = mean, sd = sd, min = min, max = max))) |>
+  pivot_longer(
+    everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "_")
+  
+descriptives |> 
+  gt() |>
+  fmt_number(columns = where(is.numeric), decimals = 2)
+```
+
+Here is a histogram of overall workplace ratings, with an overlaid density curve.
+```{r}
+ggplot(workplace.rating.df, aes(x = rating)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 15,
+    fill = "#669BBC",
+    color = "white",
+    alpha = 0.8) +
+  geom_density(
+    linewidth = 0.9,
+    color = "#9A3038") +
+  labs(x = "Overall Departmental Workplace Rating",
+    y = "Density") +
+  theme_minimal(base_size = 12)
+```
+
+## Associations Between Predictors and Outcome Variable
+
+Here are three scatterplots depicting the relationships between overall workplace ratings and each predictor:
+
+```{r}
+ggplot(workplace.rating.df, aes(x = complaints, y = rating)) +
+  geom_point(alpha = 0.75) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "#27638A") +
+  labs(x = "Departmental Handling of Employee Complaints",
+    y = "Overall Departmental Workplace Rating") +
+  theme_minimal(base_size = 12) +
+  annotate("label",
+           x = 80,
+           y = 50,
+           label = "r = .83")
+
+ggplot(workplace.rating.df, aes(x = learning, y = rating)) +
+  geom_point(alpha = 0.75) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "#27638A") +
+  labs(x = "Departmental Opportunity to Learn",
+       y = "Overall Departmental Workplace Rating") +
+  theme_minimal(base_size = 12) +
+  annotate("label",
+           x = 70,
+           y = 50,
+           label = "r = .62")
+
+ggplot(workplace.rating.df, aes(x = raises, y = rating)) +
+  geom_point(alpha = 0.75) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "#27638A") +
+  labs(x = "Departmental Pay Increases",
+       y = "Overall Departmental Workplace Rating") +
+  theme_minimal(base_size = 12) +
+  annotate("label",
+           x = 80,
+           y = 50,
+           label = "r = .59")
+```
+These data suggest that each of the three predictors is associated with departmental pay increase and is approximately linear. In the plot depicting the relationship between departmental opportunity to learn and overall ratings, one point (positioned near x = 60, y = 40) appears particularly distant from the line of best fit, although it would be more informative to inspect the standardized residuals, a plot of the leverage points, and Cook's distance estimates before drawing any conclusions about this point's position and influence. Additionally, while it was expected that departmental handling of employee complaints would be strongly correlated with overall workplace ratings, with opportunity to learn not as strongly correlated, it was somewhat surprising to see that the correlation coefficient of departmental pay increase's association to ratings had the smallest value. That said, all three predictors should be positioned in the same model to understand their independent and combined influence on the outcome of interest.
+
+## Specifying Competing Regression Models
+All three predictors are expected to positively predict overall workplace ratings because each reflects employees’ perceptions of how well their organization supports and values them. Effective handling of employee complaints may contribute to higher workplace ratings by demonstrating that one’s department takes employee concerns seriously, responds fairly, and is committed to addressing workplace issues. Opportunities for learning may explain additional variance because access to professional development and skill-building can increase employees’ senses of personal growth and organizational engagement. Finally, pay raises may explain additional variance, as compensation increases can reflect employees’ sense of fulfillment, perceptions of recognition, and the psychological benefits of potentially reduced socioeconomic strain.
+
+## Interpreting the Comparisons
+```{r}
+## Intercept-only Model
+mod0 <- lm(rating ~ 1, data = workplace.rating.df)
+
+# Complaints model
+mod1 <- lm(rating ~ complaints, data = workplace.rating.df)
+
+# Complaints + Learning model
+mod2 <- lm(rating ~ complaints + learning, data = workplace.rating.df)
+
+# Expanded model
+mod3 <- lm(rating ~ complaints + learning + raises, data = workplace.rating.df)
+
+```
+
+In M1, the complaints coefficient is 0.76 (p<.001), indicating that a one-unit increase in departmental handling of complaints is associated with a 0.76-point increase in the overall workplace rating. In M2, after controlling for learning opportunities, the coefficient decreases slightly to 0.64 (p<.001), suggesting that some of the association between complaints and the overall workplace rating is shared with perceived learning opportunities. In M3, after additionally controlling for raises, the coefficient increases marginally to 0.65 (p<.001). This suggests that accounting for pay raises has little impact on the complaints-rating association. Overall, the positive association between departmental handling of complaints and the overall workplace rating remains statistically significant across all three models, indicating that it is relatively robust to the inclusion of additional predictors.
+
+```{r}
+# Nested-Model F-Tests
+tests <- anova(mod0, mod1, mod2, mod3)
+
+nested.f.tests <- tests |>
+  select(Res.Df, Df, F, `Pr(>F)`) |>
+  rename("Residual DF" = Res.Df,
+    "Change in Df" = Df,
+    "Nested F" = F,
+    "Nested p" = `Pr(>F)`) |> 
+  mutate(`Nested p` = ifelse(`Nested p` < 0.001,
+      "< .001", sprintf("%.3f", `Nested p`))) |> 
+  mutate(Model = c("Intercept-only", "M1: Complaints", "M2: + Learning", "M3: + Raises")) |> 
+  relocate(Model, .before = 1)
+
+# Extracting Overall Model Performance
+glance0 <- glance(mod0)
+glance1 <- glance(mod1)
+glance2 <- glance(mod2)
+glance3 <- glance(mod3)
+
+glances <- rbind(glance0,
+  glance1,
+  glance2,
+  glance3) |> 
+  mutate(Model = c("Intercept-only", "M1: Complaints", "M2: + Learning", "M3: + Raises")) |> 
+  relocate(Model, .before = 1)
+
+## Combining nested tests and model performance
+
+comparison_table <- cbind(
+  Model = glances,
+  nested.f.tests)
+
+comparison_table <- comparison_table |>
+  mutate(Delta.R2 = Model.r.squared - lag(Model.r.squared),
+    RMSE = c(sqrt(mean(residuals(mod0)^2)),
+      sqrt(mean(residuals(mod1)^2)),
+      sqrt(mean(residuals(mod2)^2)),
+      sqrt(mean(residuals(mod3)^2)))) |>
+  select(Model.Model,
+    Model.r.squared,
+    Delta.R2,
+    Model.adj.r.squared,
+    RMSE,
+    "Residual DF",
+    Model.df,
+    "Nested F",
+    "Nested p")
+
+## Displaying combined model-comparison table
+comparison_table |>
+  gt() |>
+  fmt_number(columns = c(
+    Model.r.squared,
+    Model.adj.r.squared,
+    RMSE,
+    Delta.R2,
+    "Nested F"),
+    decimals = 2) |>
+  sub_missing(columns = c(Delta.R2, Model.df, "Nested F", "Nested p"),
+              missing_text = "—") |> 
+  cols_label(Model.Model = "Model",
+    Model.r.squared = "R²",
+    Model.adj.r.squared = "Adjusted R²",
+    RMSE = "RMSE",
+    Delta.R2 = "ΔR²",
+    "Residual DF" = "Residual df",
+    Model.df = "Nested df") |> 
+  cols_move(columns = Delta.R2,
+    after = "Residual DF")
+```
+
+The results suggest that M1 (Complaints) provides the most substantial improvement, accounting for 68% of the variance (R² = .68, adjusted R² = .67) in overall workplace ratings. Compared with the intercept-only model, adding complaints significantly improves model fit (F = 60.73, p < .001), suggesting that departmental handling of employee complaints is a strong predictor of overall workplace ratings. Adding Learning in M2 increases R² by only .03 (3%, R² = +2%; F = 2.38, p = .135), suggesting that learning opportunities provide limited additional explanatory value beyond departmental handling of employee complaints, even if it does explain the largest proportion of variation in the outcome. Adding Pay Raises in M3 produces no additional explained variance (ΔR² = .00) and reduces adjusted R² from .69 to .67. This addition fails to significantly improve model fit (F = 0.02, p = .876), suggesting that raises contribute no explanatory value beyond the other predictors. A similar pattern is evident in RMSE: the reduction from 11.97 in the intercept-only model to 6.76 in M1 indicates a substantial improvement in predictive accuracy, whereas the subsequent reductions to 6.47 in M2 and 6.46 in M3 are comparatively small. Overall, the results suggest that departmental handling of complaints accounts for most of the explained variance in overall workplace ratings, while learning opportunities and pay raises do not provide statistically significant improvements in explanatory or predictive performance.
+
+## Model Diagnostics
+
+The diagnostic plots suggest that Model 1 is a reasonable description of the data. The residuals show minimal curvature against the fitted values, tracking the reference line relatively closely, so the assumption of linearity appears reasonably satisfied. No observation is influential, as no point approaches the Cook’s distance contours. Although there does appear to be some curvature in the plot diagnosing normality of residuals, these deviations are within reason (most <0.5). It is unsurprising that the largest deviation occurs at the highest distribution quantile, as extreme quantiles are the noisiest in small samples. Similarly, although the reference line in the plot diagnosing homogeneity of variance is not flat, it is the most flat in Model 1 (compared to Models 2 and 3) and does not depict a funnel shape. That said, if not for the results of the model-comparison table indicating that Model 1 offers the most parsimoniously adequate model, the diagnostic plots for Models 2 and 3 suggest that they would also adequately meet the requisite assumptions (including low multicollinearity; VIF(M2) = 1.25, VIF(M3) = 1.36-1.47). Together, these results support trusting the standard errors and p-values for Model 1. Overall, my confidence in Model 1 is relatively strong, noting that the small sample size (n = 30) can make diagnostic checks imprecise.
+``` {r}
+check_model(mod1)
+```
