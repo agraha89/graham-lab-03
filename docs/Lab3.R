@@ -260,3 +260,57 @@ selected_model <- switch(
 op <- par(mfrow = c(2, 2))
 
 plot(selected_model)
+
+check_model(mod1)
+check_model(mod2)
+check_model(mod3)
+check_collinearity(mod2)
+check_collinearity(mod3)
+
+## Reporting Regression Coefficients
+coefficient_results <- tidy(mod1,
+  conf.int = TRUE,
+  conf.level = 0.95)
+
+coefficient_results |>
+  select(term,
+    estimate,
+    std.error,
+    conf.low,
+    conf.high,
+    p.value) |>
+  gt() |>
+  cols_label(term = "Predictor",
+    estimate = "Estimate",
+    std.error = "SE",
+    conf.low = "95% CI lower",
+    conf.high = "95% CI upper",
+    p.value = "p") |>
+  fmt_number(columns = c(
+      estimate,
+      std.error,
+      conf.low,
+      conf.high),
+    decimals = 3) |>
+  fmt(columns = p.value,
+    fns = function(x) {
+      ifelse(
+        x < .001,
+        "< .001",
+        sprintf("%.3f", x))})
+
+mod1_row <- comparison_table |> 
+  slice(2) |>
+  select(Model.Model,
+    Model.r.squared,
+    Model.adj.r.squared,
+    RMSE) |> 
+  gt() |>
+  cols_label(
+    Model.Model = "Model",
+    Model.r.squared = "R²",
+    Model.adj.r.squared = "Adjusted R²",
+    RMSE = "RMSE") |>
+  fmt_number(columns = where(is.numeric),
+    decimals = 3)
+
